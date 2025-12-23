@@ -102,9 +102,14 @@ class BrokerSysPlugin:
             messages_stored += session.retained_messages_count
         messages_stored += len(self.context.retained_messages)
         subscriptions_count = 0
+        subs_dic = {}
         for topic in self.context.subscriptions:
             subscriptions_count += len(self.context.subscriptions[topic])
-
+            if topic not in subs_dic:
+                subs_dic[topic]=[]
+            for sbo in self.context.subscriptions[topic]:
+                subs_dic[topic].extend([sbo[0].client_id,sbo[1]])
+            
         # Broadcast updates
         tasks = deque()
         tasks.append(self.schedule_broadcast_sys_topic('load/bytes/received', int_to_bytes_str(self._stats[STAT_BYTES_RECEIVED])))
@@ -126,6 +131,7 @@ class BrokerSysPlugin:
         tasks.append(self.schedule_broadcast_sys_topic('messages/publish/sent', int_to_bytes_str(self._stats[STAT_PUBLISH_SENT])))
         tasks.append(self.schedule_broadcast_sys_topic('messages/retained/count', int_to_bytes_str(len(self.context.retained_messages))))
         tasks.append(self.schedule_broadcast_sys_topic('messages/subscriptions/count', int_to_bytes_str(subscriptions_count)))
+        tasks.append(self.schedule_broadcast_sys_topic('messages/subscriptions', str(subs_dic).encode('utf-8')))
 
         # Wait until broadcasting tasks end
         while tasks and tasks[0].done():
@@ -164,3 +170,9 @@ class BrokerSysPlugin:
     def on_broker_client_disconnected(self, *args, **kwargs):
         self._stats[STAT_CLIENTS_CONNECTED] -= 1
         self._stats[STAT_CLIENTS_DISCONNECTED] += 1
+        client_id = kwargs.get('client_id')
+        if client_id:
+            for topic in self.context.subscriptions:
+                for idx, (sbo, qos) in enumerate(self.context.subscriptions[topic]):
+                    if sbo.client_id==client_id:
+                        self.context.subscriptions[topic].pop(idx)
