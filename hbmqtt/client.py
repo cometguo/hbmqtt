@@ -123,6 +123,7 @@ class MQTTClient:
                 cafile=None,
                 capath=None,
                 cadata=None,
+                upo=[],
                 extra_headers={}):
         """
             Connect to a remote broker.
@@ -141,7 +142,7 @@ class MQTTClient:
             :raise: :class:`hbmqtt.client.ConnectException` if connection fails
         """
 
-        self.session = self._initsession(uri, cleansession, cafile, capath, cadata)
+        self.session = self._initsession(uri, cleansession, cafile, capath, cadata, upo)
         self.extra_headers = extra_headers;
         self.logger.debug("Connect to: %s" % uri)
 
@@ -182,7 +183,7 @@ class MQTTClient:
         :return:
         """
         try:
-            while self.client_tasks:
+            while True:
                 task = self.client_tasks.pop()
                 task.cancel()
         except IndexError as err:
@@ -349,12 +350,11 @@ class MQTTClient:
         self.client_tasks.append(deliver_task)
         self.logger.debug("Waiting message delivery")
         done, pending = yield from asyncio.wait([deliver_task], loop=self._loop, return_when=asyncio.FIRST_EXCEPTION, timeout=timeout)
-        if self.client_tasks:
-            self.client_tasks.pop()
         if deliver_task in done:
             if deliver_task.exception() is not None:
                 # deliver_task raised an exception, pass it on to our caller
                 raise deliver_task.exception()
+            self.client_tasks.pop()
             return deliver_task.result()
         else:
             #timeout occured before message received
@@ -456,7 +456,7 @@ class MQTTClient:
             while self.client_tasks:
                 task = self.client_tasks.popleft()
                 if not task.done():
-                    task.cancel()
+                    task.set_exception(ClientException("Connection lost"))
 
         self.logger.debug("Watch broker disconnection")
         # Wait for disconnection from broker (like connection lost)
@@ -489,7 +489,8 @@ class MQTTClient:
             cleansession=None,
             cafile=None,
             capath=None,
-            cadata=None) -> Session:
+            cadata=None,
+            upo=None) -> Session:
         # Load config
         broker_conf = self.config.get('broker', dict()).copy()
         if uri:
@@ -520,6 +521,11 @@ class MQTTClient:
         s.cafile = broker_conf['cafile']
         s.capath = broker_conf['capath']
         s.cadata = broker_conf['cadata']
+
+        if upo is not None:
+            s.username=upo[0]
+            s.password=upo[1]
+
         if cleansession is not None:
             s.clean_session = cleansession
         else:

@@ -49,10 +49,7 @@ def read_or_raise(reader, n=-1):
     :param n: number of bytes to read
     :return: bytes read
     """
-    try:
-        data = yield from reader.read(n)
-    except (asyncio.IncompleteReadError, ConnectionResetError, BrokenPipeError):
-        data = None
+    data = yield from reader.read(n)
     if not data:
         raise NoDataException("No more data")
     return data

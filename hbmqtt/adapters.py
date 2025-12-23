@@ -3,7 +3,7 @@
 # See the file license.txt for copying permission.
 import asyncio
 import io
-from websockets.protocol import WebSocketCommonProtocol
+from websockets.legacy.protocol import WebSocketCommonProtocol
 from websockets.exceptions import ConnectionClosed
 from asyncio import StreamReader, StreamWriter
 import logging
@@ -90,7 +90,7 @@ class WebSocketsReader(ReaderAdapter):
             if message is None:
                 break
             if not isinstance(message, bytes):
-                raise TypeError("message must be bytes")
+                raise TypeError(f"message({message}) must be bytes")
             buffer.extend(message)
         self._stream = io.BytesIO(buffer)
 
@@ -158,16 +158,13 @@ class StreamWriterAdapter(WriterAdapter):
     def __init__(self, writer: StreamWriter):
         self.logger = logging.getLogger(__name__)
         self._writer = writer
-        self.is_closed = False # StreamWriter has no test for closed...we use our own
 
     def write(self, data):
-        if not self.is_closed:
-            self._writer.write(data)
+        self._writer.write(data)
 
     @asyncio.coroutine
     def drain(self):
-        if not self.is_closed:
-            yield from self._writer.drain()
+        yield from self._writer.drain()
 
     def get_peer_info(self):
         extra_info = self._writer.get_extra_info('peername')
@@ -175,14 +172,10 @@ class StreamWriterAdapter(WriterAdapter):
 
     @asyncio.coroutine
     def close(self):
-        if not self.is_closed:
-            self.is_closed = True # we first mark this closed so yields below don't cause races with waiting writes
-            yield from self._writer.drain()
-            if self._writer.can_write_eof():
-                self._writer.write_eof()
-            self._writer.close()
-            try: yield from self._writer.wait_closed() # py37+
-            except AttributeError: pass
+        yield from self._writer.drain()
+        if self._writer.can_write_eof():
+            self._writer.write_eof()
+        self._writer.close()
 
 
 class BufferReader(ReaderAdapter):
