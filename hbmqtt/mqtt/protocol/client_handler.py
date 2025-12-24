@@ -113,6 +113,8 @@ class ClientProtocolHandler(ProtocolHandler):
         return_codes = yield from waiter
 
         del self._subscriptions_waiter[subscribe.variable_header.packet_id]
+        if return_codes[0]!=topics[0][1]:
+            raise Exception(f"invalid topic:{topics[0][0]}")
         return return_codes
 
     @asyncio.coroutine
